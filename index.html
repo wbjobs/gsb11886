@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>屏幕空间特效 · SSR / SSAO / 景深 / 运动模糊</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <h1>屏幕空间特效实验室</h1>
+      </div>
+      <div class="hud" id="hud">
+        <span id="hud-fps">-- fps</span>
+        <span id="hud-frame">-- ms</span>
+        <span id="hud-gpu" title="本浏览器不支持 GPU 计时器时显示 n/a">GPU n/a</span>
+        <span id="hud-longtasks" title="PerformanceObserver 捕获的主线程长任务">长任务 0</span>
+        <span id="hud-mode">初始化中…</span>
+      </div>
+    </header>
+
+    <div class="body">
+      <aside class="panel" id="panel">
+        <section class="group">
+          <h2>场景</h2>
+          <div class="row">
+            <label for="scene">预设场景</label>
+            <select id="scene">
+              <option value="cornell">康奈尔房间（粗糙度渐变）</option>
+              <option value="pillars">立柱走廊（SSAO/法线）</option>
+              <option value="mirror">镜面大厅（强反射）</option>
+            </select>
+          </div>
+          <div class="row checkbox">
+            <input type="checkbox" id="autoOrbit" checked />
+            <label for="autoOrbit">自动环绕（产生相机运动模糊）</label>
+          </div>
+          <div class="row">
+            <button id="pick-focus" class="btn" type="button">在画面中点击选取焦点</button>
+          </div>
+        </section>
+
+        <section class="group">
+          <h2>质量 / 降级</h2>
+          <div class="row">
+            <label for="quality">质量档位</label>
+            <select id="quality">
+              <option value="0">L0 无后期（仅前向）</option>
+              <option value="1">L1 低（半分辨率）</option>
+              <option value="2">L2 中</option>
+              <option value="3" selected>L3 高</option>
+            </select>
+          </div>
+          <div class="row checkbox">
+            <input type="checkbox" id="autoDegrade" checked />
+            <label for="autoDegrade">卡顿自动降级（&lt;45fps 持续 2 秒）</label>
+          </div>
+          <div class="row checkbox">
+            <input type="checkbox" id="forceWorker" />
+            <label for="forceWorker">禁用 Worker（主线程渲染对照）</label>
+          </div>
+          <div class="muted" id="degrade-note"></div>
+        </section>
+
+        <section class="group">
+          <h2>特效开关</h2>
+          <div class="row checkbox"><input type="checkbox" id="fx-ssr" checked /><label for="fx-ssr">SSR 屏幕空间反射</label></div>
+          <div class="row checkbox"><input type="checkbox" id="fx-ssao" checked /><label for="fx-ssao">SSAO 屏幕空间环境遮蔽</label></div>
+          <div class="row checkbox"><input type="checkbox" id="fx-dof" checked /><label for="fx-dof">景深 DoF</label></div>
+          <div class="row checkbox"><input type="checkbox" id="fx-motion" checked /><label for="fx-motion">运动模糊</label></div>
+        </section>
+
+        <section class="group" id="ssr-group">
+          <h2>SSR 参数</h2>
+          <div class="row"><label>最大步数 <output id="ssrStepsOut">32</output></label>
+            <input type="range" id="ssrSteps" min="8" max="80" step="4" value="32" /></div>
+          <div class="row"><label>射线厚度 <output id="ssrThicknessOut">0.06</output></label>
+            <input type="range" id="ssrThickness" min="0.005" max="0.3" step="0.005" value="0.06" /></div>
+          <div class="row"><label>最大距离 <output id="ssrMaxDistOut">12</output></label>
+            <input type="range" id="ssrMaxDist" min="1" max="30" step="0.5" value="12" /></div>
+          <div class="row"><label>粗糙度模糊 <output id="ssrRoughBlurOut">1.00</output></label>
+            <input type="range" id="ssrRoughBlur" min="0" max="2" step="0.05" value="1" /></div>
+          <div class="row"><label>反射强度 <output id="ssrIntensityOut">1.00</output></label>
+            <input type="range" id="ssrIntensity" min="0" max="2" step="0.05" value="1" /></div>
+        </section>
+
+        <section class="group" id="ssao-group">
+          <h2>SSAO 参数</h2>
+          <div class="row"><label>采样核大小 <output id="ssaoSamplesOut">16</output></label>
+            <input type="range" id="ssaoSamples" min="4" max="32" step="4" value="16" /></div>
+          <div class="row"><label>采样半径 <output id="ssaoRadiusOut">0.80</output></label>
+            <input type="range" id="ssaoRadius" min="0.05" max="3" step="0.05" value="0.8" /></div>
+          <div class="row"><label>遮蔽强度 <output id="ssaoBiasOut">0.025</output></label>
+            <input type="range" id="ssaoBias" min="0.005" max="0.1" step="0.005" value="0.025" /></div>
+          <div class="row"><label>遮蔽范围衰减 <output id="ssaoPowerOut">2.0</output></label>
+            <input type="range" id="ssaoPower" min="1" max="6" step="0.1" value="2" /></div>
+        </section>
+
+        <section class="group" id="dof-group">
+          <h2>景深参数</h2>
+          <div class="row"><label>对焦距离 <output id="dofFocusOut">6.0</output></label>
+            <input type="range" id="dofFocus" min="0.5" max="25" step="0.1" value="6" /></div>
+          <div class="row"><label>光圈（模糊量） <output id="dofApertureOut">1.2</output></label>
+            <input type="range" id="dofAperture" min="0" max="4" step="0.05" value="1.2" /></div>
+          <div class="row"><label>对焦范围 <output id="dofRangeOut">1.6</output></label>
+            <input type="range" id="dofRange" min="0.2" max="6" step="0.1" value="1.6" /></div>
+          <div class="row checkbox"><input type="checkbox" id="dofAuto" /><label for="dofAuto">自动对焦（画面中心深度）</label></div>
+        </section>
+
+        <section class="group" id="motion-group">
+          <h2>运动模糊参数</h2>
+          <div class="row"><label>采样数 <output id="motionSamplesOut">8</output></label>
+            <input type="range" id="motionSamples" min="2" max="16" step="1" value="8" /></div>
+          <div class="row"><label>快门强度 <output id="motionStrengthOut">1.00</output></label>
+            <input type="range" id="motionStrength" min="0" max="3" step="0.05" value="1" /></div>
+        </section>
+
+        <section class="group">
+          <h2>调试可视化</h2>
+          <div class="row">
+            <label for="debug">缓冲视图</label>
+            <select id="debug">
+              <option value="0" selected>最终合成</option>
+              <option value="1">线性深度</option>
+              <option value="2">视图空间法线</option>
+              <option value="3">速度向量</option>
+              <option value="4">SSAO 遮蔽</option>
+              <option value="5">SSR 命中遮罩</option>
+              <option value="6">景深 CoC</option>
+              <option value="7">基础着色（无特效）</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="group bench-group">
+          <h2>性能对照（Benchmark）</h2>
+          <div class="row">
+            <button id="bench-run" class="btn primary" type="button">跑分：L0→L3 各 240 帧</button>
+            <button id="bench-clear" class="btn" type="button">清除记录</button>
+          </div>
+          <div id="bench-status" class="muted">未运行</div>
+          <canvas id="bench-chart" width="320" height="180"></canvas>
+          <div id="bench-table"></div>
+        </section>
+
+        <div class="row">
+          <button id="reset-defaults" class="btn" type="button">恢复默认参数</button>
+        </div>
+      </aside>
+
+      <main class="stage">
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="gl"></canvas>
+          <div class="focus-marker" id="focus-marker" hidden></div>
+          <div class="overlay-banner" id="fallback-banner" hidden></div>
+          <div class="help-tip">拖拽旋转 · 滚轮缩放 · 可点击「选取焦点」后点画面</div>
+        </div>
+        <div class="error-panel" id="error-panel" hidden></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/renderer/mat4.js"></script>
+  <script src="js/renderer/shaders/chunks.js"></script>
+  <script src="js/renderer/shaders/gbuffer.js"></script>
+  <script src="js/renderer/shaders/post.js"></script>
+  <script src="js/renderer/shaders/legacy.js"></script>
+  <script src="js/renderer/gl-renderer.js"></script>
+  <script src="js/renderer/camera.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/perf-monitor.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
